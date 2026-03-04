@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exchange Log Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <style>
+        :root {
+            --primary: #0078D4; --secondary: #f3f2f1; --text: #323130;
+            --danger: #d13438; --warning: #ffaa44; --success: #107c10; --info: #00bcf2;
+        }
+        * { box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #faf9f8; color: var(--text);
+            margin: 0; padding: 0; height: 100vh;
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+        
+        /* Header */
+        header {
+            flex: 0 0 auto; background-color: white; padding: 10px 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex;
+            justify-content: space-between; align-items: center; z-index: 10;
+        }
+        header h2 { margin: 0; font-size: 18px; color: var(--primary); }
+        .controls { display: flex; gap: 10px; align-items: center; }
+        .upload-section { background: var(--secondary); padding: 5px 15px; border-radius: 4px; font-size: 14px; display: flex; align-items: center;}
+        
+        /* Buttons */
+        .btn {
+            background-color: var(--primary); color: white; border: none;
+            padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer;
+            transition: background 0.2s; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;
+        }
+        .btn:hover { background-color: #005a9e; }
+        .btn-danger { background-color: var(--danger); }
+        .btn-danger:hover { background-color: #a80000; }
+        .btn-success { background-color: var(--success); }
+        .btn-success:hover { background-color: #0b5a0b; }
+        #downloadPdfBtn { display: none; padding: 8px 15px; font-size: 13px; }
+        
+        /* Main Grid Layout */
+        .dashboard-container {
+            display: none; flex: 1 1 auto; padding: 15px; gap: 15px;
+            grid-template-columns: 1fr 1.2fr 1.8fr;
+            grid-template-rows: auto minmax(0, 1fr) minmax(0, 1.2fr);
+            overflow: hidden;
+        }
+        
+        .panel { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); padding: 15px; display: flex; flex-direction: column; min-height: 0; }
+        .panel-title { margin: 0 0 10px 0; font-size: 14px; color: #605e5c; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; flex: 0 0 auto; }
+
+        .kpi-row { grid-column: 1 / -1; grid-row: 1 / 2; display: flex; gap: 15px; }
+        .kpi-card { flex: 1; text-align: center; padding: 10px; }
+        .kpi-card .value { font-size: 22px; font-weight: bold; color: var(--primary); margin: 5px 0 0 0; }
+
+        .panel-chart { grid-column: 1 / 2; grid-row: 2 / 3; }
+        .chart-wrapper { position: relative; flex: 1; min-height: 0; }
+        
+        .panel-summary { grid-column: 2 / 3; grid-row: 2 / 3; overflow-y: auto; }
+        .panel-history { grid-column: 3 / 4; grid-row: 2 / 3; overflow-y: auto; }
+        .panel-details { grid-column: 1 / -1; grid-row: 3 / 4; overflow: hidden; display: flex; flex-direction: column; }
+
+        /* Tabs */
+        .tabs { display: flex; border-bottom: 2px solid var(--secondary); margin-bottom: 10px; flex: 0 0 auto; }
+        .tab { padding: 8px 15px; cursor: pointer; font-size: 14px; font-weight: 600; color: #605e5c; border-bottom: 3px solid transparent; }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-warning { color: var(--danger); }
+        .tab-warning.active { border-bottom-color: var(--danger); }
+        
+        .tab-content { display: none; flex: 1 1 auto; overflow-y: auto; }
+        .tab-content.active { display: block; height: 100%; }
+        
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+        th, td { padding: 6px 10px; border-bottom: 1px solid var(--secondary); }
+        th { background-color: var(--secondary); font-weight: 600; position: sticky; top: 0; z-index: 5; box-shadow: 0 1px 0 rgba(0,0,0,0.1); }
+        tr:hover { background-color: #fdfdfd; }
+        
+        .badge { padding: 3px 6px; border-radius: 10px; font-size: 11px; font-weight: bold; color: white; }
+        .badge-defer { background: var(--warning); } .badge-error { background: var(--danger); }
+        .badge-delivered { background: var(--success); } .badge-queue { background: #888; }
+        .badge-info { background: var(--info); }
+
+        .warning-banner { background-color: #fdf3f4; border-left: 4px solid var(--danger); padding: 10px; margin-bottom: 10px; font-size: 12px; color: #791818; flex: 0 0 auto; }
+        .table-scroll-container { flex: 1 1 auto; overflow-y: auto; }
+
+        @media (max-width: 1024px) {
+            body { height: auto; overflow: auto; }
+            .dashboard-container { display: flex !important; flex-direction: column; }
+            .kpi-row { flex-wrap: wrap; }
+            .panel { min-height: 250px; overflow: visible; }
+            .panel-details { min-height: 400px; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h2>Exchange Email Analytics</h2>
+    <div class="controls">
+        <div class="upload-section">
+            <label for="csvFileInput" style="font-weight: bold; margin-right:10px;">Load CSV:</label>
+            <input type="file" id="csvFileInput" accept=".csv" onchange="processCSV()" />
+        </div>
+        <button id="downloadPdfBtn" class="btn" onclick="generatePDF()">📄 Download PDF Report</button>
+    </div>
+</header>
+
+<div class="dashboard-container" id="dashboard">
+    
+    <div class="kpi-row">
+        <div class="panel kpi-card">
+            <h3 class="panel-title" style="justify-content:center;">Total Emails</h3>
+            <p class="value" id="kpiTotal">0</p>
+        </div>
+        <div class="panel kpi-card">
+            <h3 class="panel-title" style="justify-content:center;">Earliest Log Date</h3>
+            <p class="value" style="font-size: 15px; margin-top: 10px;" id="kpiEarliest">-</p>
+        </div>
+        <div class="panel kpi-card">
+            <h3 class="panel-title" style="justify-content:center;">Latest Log Date</h3>
+            <p class="value" style="font-size: 15px; margin-top: 10px;" id="kpiLatest">-</p>
+        </div>
+    </div>
+
+    <div class="panel panel-chart">
+        <h3 class="panel-title">Traffic Distribution</h3>
+        <div class="chart-wrapper">
+            <canvas id="statusChart"></canvas>
+        </div>
+    </div>
+    
+    <div class="panel panel-summary">
+        <h3 class="panel-title">Consolidation Summary</h3>
+        <div class="table-scroll-container">
+            <table id="summaryTable">
+                <thead><tr><th>Status</th><th>Count</th><th>% Total</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel panel-history" id="historyPanel">
+        <h3 class="panel-title">
+            📅 Run History
+            <div style="display:flex; gap:5px;">
+                <button class="btn btn-success" onclick="exportHistoryCSV()">Export</button>
+                <button class="btn btn-danger" onclick="clearHistory()">Clear</button>
+            </div>
+        </h3>
+        <div class="table-scroll-container">
+            <table id="historyTable">
+                <thead><tr><th>Run Date</th><th>File Analyzed</th><th>Total</th><th>Deliver</th><th>Defer</th><th>Error</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel panel-details" id="detailsContainer">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('deferTab')">DEFER Report</div>
+            <div class="tab" onclick="switchTab('errorTab')">ERROR Report</div>
+            <div class="tab tab-warning" onclick="switchTab('faultyTab')">⚠️ Action Required</div>
+        </div>
+
+        <div id="deferTab" class="tab-content active">
+            <table id="deferTable">
+                <thead><tr><th>From Email</th><th>To (Recipient)</th><th>Qty</th><th>Impact Analysis</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div id="errorTab" class="tab-content">
+            <table id="errorTable">
+                <thead><tr><th>From Email</th><th>To (Recipient)</th><th>Qty</th><th>Impact Analysis</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div id="faultyTab" class="tab-content" style="display:flex; flex-direction:column;">
+            <div class="warning-banner">
+                <strong>⚠️ User Notice:</strong> Please review and rework these recipient email addresses in your system/distribution lists as they have generated DEFER or ERROR statuses.
+            </div>
+            <div class="table-scroll-container">
+                <table id="faultyTable">
+                    <thead><tr><th>Faulty Recipient Email</th><th>Total Failures</th><th>Recorded Status(es)</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+let myChart = null;
+let currentFilename = "";
+
+window.onload = function() { loadHistoryTable(); };
+
+function switchTab(tabId) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+}
+
+function processCSV() {
+    const fileInput = document.getElementById('csvFileInput');
+    if (!fileInput.files.length) return;
+    currentFilename = fileInput.files[0].name;
+
+    Papa.parse(fileInput.files[0], {
+        header: true, skipEmptyLines: true,
+        complete: function(results) {
+            analyzeData(results.data);
+            document.getElementById('dashboard').style.display = 'grid';
+            document.getElementById('downloadPdfBtn').style.display = 'block';
+        }
+    });
+}
+
+function analyzeData(data) {
+    let earliestDate = null, latestDate = null;
+    let stats = { total: 0, defer: 0, delivered: 0, error: 0, queue: 0 };
+    let deferMap = {}, errorMap = {}, faultyEmailsMap = {};
+
+    data.forEach(row => {
+        const actionStr = (row.action || row.status || "").toUpperCase();
+        const dateStr = row.date;
+        const fromEmail = row.from || "Unknown";
+        const toEmail = row.to || "Unknown";
+
+        if (!dateStr || !row.action) return; 
+        
+        const rowDate = new Date(dateStr);
+        if (!isNaN(rowDate)) {
+            if (!earliestDate || rowDate < earliestDate) earliestDate = rowDate;
+            if (!latestDate || rowDate > latestDate) latestDate = rowDate;
+        }
+
+        stats.total++;
+
+        if (actionStr.includes('DEFER')) stats.defer++;
+        else if (actionStr.includes('DELIVER') || actionStr.includes('OK')) stats.delivered++;
+        else if (actionStr.includes('ERROR') || actionStr.includes('FAIL') || actionStr.includes('REJECT')) stats.error++;
+        else if (actionStr.includes('QUEUE')) stats.queue++;
+
+        const key = `${fromEmail}|${toEmail}`;
+        if (actionStr.includes('DEFER')) deferMap[key] = (deferMap[key] || 0) + 1;
+        if (actionStr.includes('ERROR') || actionStr.includes('FAIL') || actionStr.includes('REJECT')) errorMap[key] = (errorMap[key] || 0) + 1;
+
+        if (actionStr.includes('DEFER') || actionStr.includes('ERROR') || actionStr.includes('FAIL') || actionStr.includes('REJECT')) {
+            if (toEmail !== "Unknown" && toEmail.trim() !== "") {
+                if (!faultyEmailsMap[toEmail]) faultyEmailsMap[toEmail] = { count: 0, statuses: new Set() };
+                faultyEmailsMap[toEmail].count++;
+                faultyEmailsMap[toEmail].statuses.add(actionStr);
+            }
+        }
+    });
+
+    saveToHistory(stats);
+    updateDashboard(earliestDate, latestDate, stats, deferMap, errorMap, faultyEmailsMap);
+}
+
+function updateDashboard(earliest, latest, stats, deferMap, errorMap, faultyEmailsMap) {
+    document.getElementById('kpiTotal').innerText = stats.total.toLocaleString();
+    document.getElementById('kpiEarliest').innerText = earliest ? earliest.toLocaleString() : 'N/A';
+    document.getElementById('kpiLatest').innerText = latest ? latest.toLocaleString() : 'N/A';
+
+    const tbody = document.querySelector('#summaryTable tbody');
+    tbody.innerHTML = '';
+    const calcPct = (val) => stats.total > 0 ? ((val / stats.total) * 100).toFixed(1) + '%' : '0%';
+    
+    const rows = [
+        { label: 'Delivered', val: stats.delivered, badge: 'badge-delivered' },
+        { label: 'Deferred', val: stats.defer, badge: 'badge-defer' },
+        { label: 'Error', val: stats.error, badge: 'badge-error' },
+        { label: 'In Queue', val: stats.queue, badge: 'badge-queue' }
+    ];
+
+    rows.forEach(r => {
+        tbody.innerHTML += `<tr><td><span class="badge ${r.badge}">${r.label}</span></td><td>${r.val.toLocaleString()}</td><td><strong>${calcPct(r.val)}</strong></td></tr>`;
+    });
+
+    renderChart(stats);
+    populateDetailTable('deferTable', deferMap);
+    populateDetailTable('errorTable', errorMap);
+    populateFaultyTable(faultyEmailsMap);
+}
+
+function populateDetailTable(tableId, mapData) {
+    const tbody = document.querySelector(`#${tableId} tbody`);
+    tbody.innerHTML = '';
+    let sortedKeys = Object.keys(mapData).sort((a, b) => mapData[b] - mapData[a]);
+
+    if (sortedKeys.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No data available</td></tr>`;
+        return;
+    }
+
+    sortedKeys.forEach(key => {
+        const [from, to] = key.split('|');
+        const count = mapData[key];
+        const impactText = `This email error has caused the ${count} potential non delivery of other colleagues emails.`;
+        tbody.innerHTML += `<tr><td>${from}</td><td>${to}</td><td><strong>${count}</strong></td><td style="color: #605e5c; font-style: italic;">${impactText}</td></tr>`;
+    });
+}
+
+function populateFaultyTable(faultyData) {
+    const tbody = document.querySelector(`#faultyTable tbody`);
+    tbody.innerHTML = '';
+    let sortedEmails = Object.keys(faultyData).sort((a, b) => faultyData[b].count - faultyData[a].count);
+
+    if (sortedEmails.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;">No faulty emails found. Great job!</td></tr>`;
+        return;
+    }
+
+    sortedEmails.forEach(email => {
+        const data = faultyData[email];
+        const statusString = Array.from(data.statuses).join(', ');
+        tbody.innerHTML += `<tr><td style="color: var(--danger); font-weight: 600;">${email}</td><td><strong>${data.count}</strong></td><td><span class="badge badge-defer" style="background-color: #791818;">${statusString}</span></td></tr>`;
+    });
+}
+
+function renderChart(stats) {
+    const ctx = document.getElementById('statusChart').getContext('2d');
+    if (myChart) myChart.destroy();
+    myChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Delivered', 'Deferred', 'Error', 'Queue'],
+            datasets: [{ data: [stats.delivered, stats.defer, stats.error, stats.queue], backgroundColor: ['#107c10', '#ffaa44', '#d13438', '#888888'], borderWidth: 0 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: {size: 11} } } } }
+    });
+}
+
+// --- HISTORY FUNCTIONS ---
+function saveToHistory(stats) {
+    let history = JSON.parse(localStorage.getItem('exchangeLogHistory')) || [];
+    let d = new Date();
+    let shortDate = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+    history.push({ runDate: shortDate, filename: currentFilename, total: stats.total, delivered: stats.delivered, defer: stats.defer, error: stats.error });
+    localStorage.setItem('exchangeLogHistory', JSON.stringify(history));
+    loadHistoryTable();
+}
+
+function loadHistoryTable() {
+    let history = JSON.parse(localStorage.getItem('exchangeLogHistory')) || [];
+    const tbody = document.querySelector('#historyTable tbody');
+    tbody.innerHTML = '';
+    if (history.length === 0) return tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No history recorded yet.</td></tr>`;
+
+    history.slice().reverse().forEach(record => {
+        let shortName = record.filename.length > 20 ? record.filename.substring(0, 18) + '...' : record.filename;
+        tbody.innerHTML += `<tr><td style="white-space:nowrap;">${record.runDate}</td><td title="${record.filename}"><span class="badge badge-info">${shortName}</span></td><td><strong>${record.total.toLocaleString()}</strong></td><td style="color: var(--success);">${record.delivered.toLocaleString()}</td><td style="color: var(--warning);">${record.defer.toLocaleString()}</td><td style="color: var(--danger);">${record.error.toLocaleString()}</td></tr>`;
+    });
+}
+function clearHistory() { if (confirm("Clear master history?")) { localStorage.removeItem('exchangeLogHistory'); loadHistoryTable(); } }
+function exportHistoryCSV() {
+    let history = JSON.parse(localStorage.getItem('exchangeLogHistory')) || [];
+    if (history.length === 0) return alert("No history to export!");
+    let csvContent = "Run Date,File Analyzed,Total Emails,Delivered,Deferred,Error\n";
+    history.forEach(r => csvContent += `"${r.runDate}","${r.filename}",${r.total},${r.delivered},${r.defer},${r.error}\n`);
+    const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv' })); link.download = "Exchange_History.csv"; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+}
+
+// --- ELEGANT MULTI-PAGE PDF GENERATOR ---
+function generatePDF() {
+    const pdfBtn = document.getElementById('downloadPdfBtn');
+    pdfBtn.innerText = "Generating Print Report...";
+    pdfBtn.disabled = true;
+
+    // Build a temporary, clean HTML structure optimized purely for A4 paper
+    const printContainer = document.createElement('div');
+    printContainer.style.fontFamily = "Arial, sans-serif";
+    printContainer.style.color = "#333";
+    printContainer.style.padding = "20px";
+
+    // Grab values
+    const chartImg = document.getElementById('statusChart').toDataURL("image/png");
+    const total = document.getElementById('kpiTotal').innerText;
+    const earliest = document.getElementById('kpiEarliest').innerText;
+    const latest = document.getElementById('kpiLatest').innerText;
+
+    // Helper function to clone and clean tables for printing
+    const getCleanTable = (tableId) => {
+        const table = document.getElementById(tableId).cloneNode(true);
+        table.style.width = "100%"; table.style.borderCollapse = "collapse"; table.style.fontSize = "12px"; table.style.marginBottom = "20px";
+        table.querySelectorAll('th').forEach(th => { th.style.backgroundColor = "#f3f2f1"; th.style.padding = "8px"; th.style.borderBottom = "2px solid #ccc"; th.style.textAlign = "left"; });
+        table.querySelectorAll('td').forEach(td => { td.style.padding = "8px"; td.style.borderBottom = "1px solid #eee"; });
+        return table.outerHTML;
+    };
+
+    // Construct the print layout
+    printContainer.innerHTML = `
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #0078D4; margin: 0 0 5px 0;">Exchange Email Log Report</h1>
+            <p style="color: #666; margin: 0;">File Analyzed: ${currentFilename} | Generated: ${new Date().toLocaleString()}</p>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #eee;">
+            <div style="text-align: center;"><strong>Total Emails</strong><br><span style="font-size: 24px; color:#0078D4; font-weight:bold;">${total}</span></div>
+            <div style="text-align: center;"><strong>Earliest Log</strong><br><span style="font-size: 16px;">${earliest}</span></div>
+            <div style="text-align: center;"><strong>Latest Log</strong><br><span style="font-size: 16px;">${latest}</span></div>
+        </div>
+
+        <h2 style="color: #333; border-bottom: 2px solid #0078D4; padding-bottom: 5px; font-size: 18px;">1. Traffic Distribution & Summary</h2>
+        <div style="display: flex; align-items: center; margin-bottom: 30px; gap: 30px;">
+            <div style="flex: 1; text-align: center;"><img src="${chartImg}" style="max-height: 250px; width: auto;" /></div>
+            <div style="flex: 1;">${getCleanTable('summaryTable')}</div>
+        </div>
+
+        <div class="html2pdf__page-break"></div>
+
+        <h2 style="color: #d13438; border-bottom: 2px solid #d13438; padding-bottom: 5px; font-size: 18px;">2. Action Required: Faulty Email Recipients</h2>
+        <p style="font-size: 12px; color: #666; font-style: italic;">These recipient email addresses need to be reviewed and reworked in your system.</p>
+        ${getCleanTable('faultyTable')}
+
+        <div class="html2pdf__page-break"></div>
+
+        <h2 style="color: #ffaa44; border-bottom: 2px solid #ffaa44; padding-bottom: 5px; font-size: 18px;">3. DEFER Status Consolidated List</h2>
+        ${getCleanTable('deferTable')}
+
+        <div class="html2pdf__page-break"></div>
+
+        <h2 style="color: #d13438; border-bottom: 2px solid #d13438; padding-bottom: 5px; font-size: 18px;">4. ERROR Status Consolidated List</h2>
+        ${getCleanTable('errorTable')}
+    `;
+
+    // Configure standard A4 PDF rules
+    const opt = {
+        margin: [0.5, 0.5, 0.5, 0.5],
+        filename: 'Exchange_Email_Log_Report.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] }
+    };
+
+    // Generate PDF directly from the hidden container
+    html2pdf().set(opt).from(printContainer).save().then(() => {
+        pdfBtn.innerText = "📄 Download PDF Report";
+        pdfBtn.disabled = false;
+    }).catch(err => {
+        console.error(err);
+        alert("An error occurred during PDF generation.");
+        pdfBtn.innerText = "📄 Download PDF Report";
+        pdfBtn.disabled = false;
+    });
+}
+</script>
+
+</body>
+</html>
