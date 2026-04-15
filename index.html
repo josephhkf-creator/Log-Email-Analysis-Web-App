@@ -6,56 +6,48 @@
     <title>Exchange Email Log Dashboard</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    
+    <!-- jsPDF + autoTable: vector PDF, no canvas rendering, no overflow possible -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
     <style>
         :root {
-            /* Light Chocolate 3-Tone Palette */
-            --bg-base: #FDF8F5;      /* Tone 1: Creamy Base */
-            --bg-panel: #F4EBE6;     /* Tone 2: Light Mocha Panels */
-            --bg-header: #E8DCD5;    /* Tone 3: Warm Cocoa Headers/Borders */
-            
+            --bg-base: #FDF8F5;
+            --bg-panel: #F4EBE6;
+            --bg-header: #E8DCD5;
             --border: #D1C4BC;
-            --text-main: #3E2A1D;    /* Espresso Dark Brown */
+            --text-main: #3E2A1D;
             --text-muted: #6B5A4E;
-            --primary: #8C5A35;      /* Rich Chocolate Action Color */
-            
-            /* Status Colors adapted for the theme */
-            --danger: #B84A4A; 
-            --warning: #D18A30; 
-            --success: #5D8A46; 
+            --primary: #8C5A35;
+            --danger: #B84A4A;
+            --warning: #D18A30;
+            --success: #5D8A46;
             --info: #8A7E75;
-            
             --border-radius: 8px;
         }
         * { box-sizing: border-box; }
-        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--bg-base); color: var(--text-main);
             margin: 0; padding: 0; height: 100vh;
             display: flex; flex-direction: column; overflow: hidden;
         }
-        
-        /* Custom Scrollbars */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: var(--bg-base); border-radius: 4px; }
         ::-webkit-scrollbar-thumb { background: #C2B3A9; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #A8988D; }
 
-        /* Header */
         header {
             flex: 0 0 auto; background-color: var(--bg-header); padding: 15px 25px;
             border-bottom: 1px solid var(--border);
             display: flex; flex-wrap: wrap; gap: 15px;
             justify-content: space-between; align-items: center; z-index: 10;
         }
-        header h2 { margin: 0; font-size: 20px; color: var(--text-main); font-weight: 700; letter-spacing: 0.5px;}
+        header h2 { margin: 0; font-size: 20px; color: var(--text-main); font-weight: 700; letter-spacing: 0.5px; }
         .controls { display: flex; gap: 15px; align-items: center; }
-        .upload-section { background: var(--bg-panel); padding: 8px 15px; border-radius: 6px; font-size: 14px; border: 1px solid var(--border); display: flex; align-items: center;}
-        .upload-section input[type="file"] { max-width: 220px; color: var(--text-main); font-weight: 500;}
-        
-        /* Buttons */
+        .upload-section { background: var(--bg-panel); padding: 8px 15px; border-radius: 6px; font-size: 14px; border: 1px solid var(--border); display: flex; align-items: center; }
+        .upload-section input[type="file"] { max-width: 220px; color: var(--text-main); font-weight: 500; }
+
         .btn {
             background-color: var(--primary); color: white; border: none;
             padding: 9px 15px; border-radius: 6px; font-weight: 700; cursor: pointer;
@@ -63,90 +55,72 @@
         }
         .btn:hover { background-color: #704627; }
         .btn:active { transform: scale(0.98); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-danger { background-color: var(--danger); }
         .btn-danger:hover { background-color: #943A3A; }
         #downloadPdfBtn { display: none; }
-        
-        /* Main Layout */
+
         .dashboard-container {
-            display: none; flex: 1 1 auto; padding: 20px; gap: 20px;
+            flex: 1 1 auto; padding: 20px; gap: 20px;
             overflow-y: auto; overflow-x: hidden;
         }
-        
-        /* KPI Row */
-        .kpi-row { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); 
-            gap: 15px; 
-            margin-bottom: 20px;
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px; margin-bottom: 20px;
         }
-        .kpi-card { 
-            background: var(--bg-panel); border-radius: var(--border-radius); 
+        .kpi-card {
+            background: var(--bg-panel); border-radius: var(--border-radius);
             border: 1px solid var(--border); padding: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);
             text-align: center; display: flex; flex-direction: column; justify-content: center;
         }
-        .kpi-card .label { font-size: 12px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;}
+        .kpi-card .label { font-size: 12px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
         .kpi-card .value { font-size: 28px; font-weight: 700; color: var(--text-main); margin: 8px 0 4px 0; }
         .kpi-card .sub-value { font-size: 13px; color: var(--text-muted); margin: 0; }
 
-        /* Panels Grid: Exactly 30% Left, 70% Right */
         .panels-wrapper {
             display: grid;
-            grid-template-columns: 3fr 7fr; 
-            gap: 20px;
-            align-items: start;
+            grid-template-columns: 3fr 7fr;
+            gap: 20px; align-items: start;
         }
-
-        .panel { 
-            background: var(--bg-panel); border-radius: var(--border-radius); 
+        .panel {
+            background: var(--bg-panel); border-radius: var(--border-radius);
             border: 1px solid var(--border); padding: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);
-            display: flex; flex-direction: column; 
+            display: flex; flex-direction: column;
             min-height: 500px; max-height: 65vh;
         }
-
-        /* Tabs */
-        .tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 15px; flex: 0 0 auto; overflow-x: auto;}
-        .tab { 
-            padding: 10px 20px; cursor: pointer; font-size: 14px; font-weight: 700; 
+        .tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 15px; flex: 0 0 auto; overflow-x: auto; }
+        .tab {
+            padding: 10px 20px; cursor: pointer; font-size: 14px; font-weight: 700;
             color: var(--text-muted); border-bottom: 3px solid transparent; white-space: nowrap; transition: color 0.2s;
         }
         .tab:hover { color: var(--text-main); }
         .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
-        
-        .tab-content { display: none; flex: 1 1 auto; overflow: hidden; display: flex; flex-direction: column; }
-        .tab-content:not(.active) { display: none !important; }
-        
-        /* Responsive Tables */
-        .table-scroll-container { flex: 1 1 auto; overflow-y: auto; overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; background: white;}
+        .tab-content { display: none; flex: 1 1 auto; overflow: hidden; flex-direction: column; }
+        .tab-content.active { display: flex; }
+
+        .table-scroll-container { flex: 1 1 auto; overflow-y: auto; overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; background: white; }
         table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; table-layout: fixed; min-width: 600px; }
         th, td { padding: 12px 15px; border-bottom: 1px solid #EBE4DF; }
-        
-        /* Prevent truncation, wrap heavily instead */
         td { word-wrap: break-word; word-break: break-all; }
-        
         th { background-color: var(--bg-header); font-weight: 700; color: var(--text-main); position: sticky; top: 0; z-index: 5; box-shadow: 0 1px 0 var(--border); }
         tr:hover { background-color: #FDF9F7; }
-        
-        /* Column Width Tuning */
-        #deferTable th:nth-child(1), #errorTable th:nth-child(1) { width: 30%; } /* From */
-        #deferTable th:nth-child(2), #errorTable th:nth-child(2) { width: 30%; } /* To */
-        #deferTable th:nth-child(3), #errorTable th:nth-child(3) { width: 15%; text-align: center; } /* Occurrences */
-        #deferTable th:nth-child(4), #errorTable th:nth-child(4) { width: 25%; } /* Impact Analysis */
 
-        td.email-col { 
-            font-family: Consolas, monospace; font-size: 12px; color: #503C2E; font-weight: 500;
-        }
+        #deferTable th:nth-child(1), #errorTable th:nth-child(1) { width: 30%; }
+        #deferTable th:nth-child(2), #errorTable th:nth-child(2) { width: 30%; }
+        #deferTable th:nth-child(3), #errorTable th:nth-child(3) { width: 15%; text-align: center; }
+        #deferTable th:nth-child(4), #errorTable th:nth-child(4) { width: 25%; }
 
-        /* Badges */
+        td.email-col { font-family: Consolas, monospace; font-size: 12px; color: #503C2E; font-weight: 500; }
+
         .badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; color: white; display: inline-block; text-align: center; }
-        .badge-defer { background: var(--warning); } 
+        .badge-defer { background: var(--warning); }
         .badge-error { background: var(--danger); }
-        .badge-delivered { background: var(--success); } 
+        .badge-delivered { background: var(--success); }
         .badge-queue { background: var(--info); }
-        
-        .chart-container { flex: 0 0 auto; height: 220px; margin-bottom: 20px; position: relative; width: 100%; display: flex; justify-content: center;}
 
-        /* Mobile Adjustments */
+        .chart-container { flex: 0 0 auto; height: 220px; margin-bottom: 20px; position: relative; width: 100%; display: flex; justify-content: center; }
+
         @media (max-width: 1024px) {
             .panels-wrapper { grid-template-columns: 1fr; }
             header { flex-direction: column; align-items: flex-start; }
@@ -160,68 +134,64 @@
     <h2>Exchange Dashboard</h2>
     <div class="controls">
         <div class="upload-section">
-            <label for="csvFileInput" style="font-weight: 600; margin-right:10px; color: var(--text-main);">Upload Log CSV:</label>
+            <label for="csvFileInput" style="font-weight:600;margin-right:10px;color:var(--text-main);">Upload Log CSV:</label>
             <input type="file" id="csvFileInput" accept=".csv" onchange="processCSV()" />
         </div>
-        <button id="downloadPdfBtn" class="btn" onclick="generatePDF()">📄 Export to PDF</button>
+        <button id="downloadPdfBtn" class="btn" onclick="generatePDF()">&#128196; Export to PDF</button>
     </div>
 </header>
 
-<div class="dashboard-container" id="dashboard" style="display: block;">
-    
-    <div class="kpi-row" id="kpiSection" style="display: none;">
-        <div class="kpi-card" style="border-top: 3px solid var(--primary);">
+<div class="dashboard-container" id="dashboard">
+
+    <div class="kpi-row" id="kpiSection" style="display:none;">
+        <div class="kpi-card" style="border-top:3px solid var(--primary);">
             <div class="label">Total Treated</div>
             <p class="value" id="kpiTotal">0</p>
             <p class="sub-value" id="kpiDates">-</p>
         </div>
-        <div class="kpi-card" style="border-top: 3px solid var(--success);">
+        <div class="kpi-card" style="border-top:3px solid var(--success);">
             <div class="label">Delivered</div>
             <p class="value" id="kpiDelivered">0</p>
             <p class="sub-value" id="pctDelivered">0%</p>
         </div>
-        <div class="kpi-card" style="border-top: 3px solid var(--warning);">
+        <div class="kpi-card" style="border-top:3px solid var(--warning);">
             <div class="label">Deferred</div>
             <p class="value" id="kpiDefer">0</p>
             <p class="sub-value" id="pctDefer">0%</p>
         </div>
-        <div class="kpi-card" style="border-top: 3px solid var(--danger);">
+        <div class="kpi-card" style="border-top:3px solid var(--danger);">
             <div class="label">Error</div>
             <p class="value" id="kpiError">0</p>
             <p class="sub-value" id="pctError">0%</p>
         </div>
-        <div class="kpi-card" style="border-top: 3px solid var(--info);">
+        <div class="kpi-card" style="border-top:3px solid var(--info);">
             <div class="label">In Queue</div>
             <p class="value" id="kpiQueue">0</p>
             <p class="sub-value" id="pctQueue">0%</p>
         </div>
     </div>
 
-    <div class="panels-wrapper" id="panelsSection" style="display: none;">
+    <div class="panels-wrapper" id="panelsSection" style="display:none;">
         <div class="panel">
             <div class="tabs">
-                <div class="tab active" onclick="switchLeftTab('chartTab', this)">Distribution</div>
-                <div class="tab" onclick="switchLeftTab('historyTab', this)">History</div>
+                <div class="tab active" onclick="switchLeftTab('chartTab',this)">Distribution</div>
+                <div class="tab" onclick="switchLeftTab('historyTab',this)">History</div>
             </div>
-
             <div id="chartTab" class="tab-content active">
-                <div class="chart-container">
-                    <canvas id="statusChart"></canvas>
-                </div>
+                <div class="chart-container"><canvas id="statusChart"></canvas></div>
                 <div class="table-scroll-container">
-                    <table id="summaryTable" style="min-width: auto;">
+                    <table id="summaryTable" style="min-width:auto;">
                         <thead><tr><th>Status</th><th>Count</th><th>%</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
             </div>
-
             <div id="historyTab" class="tab-content">
-                <div style="margin-bottom: 12px; display: flex; justify-content: flex-end;">
-                    <button class="btn btn-danger" style="padding: 5px 10px; font-size: 11px;" onclick="clearHistory()">Clear History</button>
+                <div style="margin-bottom:12px;display:flex;justify-content:flex-end;">
+                    <button class="btn btn-danger" style="padding:5px 10px;font-size:11px;" onclick="clearHistory()">Clear History</button>
                 </div>
                 <div class="table-scroll-container">
-                    <table id="historyTable" style="min-width: auto;">
+                    <table id="historyTable" style="min-width:auto;">
                         <thead><tr><th>Date</th><th>File</th><th>Total</th></tr></thead>
                         <tbody></tbody>
                     </table>
@@ -231,10 +201,9 @@
 
         <div class="panel">
             <div class="tabs">
-                <div class="tab active" onclick="switchRightTab('deferTab', this)">DEFER Report</div>
-                <div class="tab" onclick="switchRightTab('errorTab', this)">ERROR Report</div>
+                <div class="tab active" onclick="switchRightTab('deferTab',this)">DEFER Report</div>
+                <div class="tab" onclick="switchRightTab('errorTab',this)">ERROR Report</div>
             </div>
-
             <div id="deferTab" class="tab-content active">
                 <div class="table-scroll-container">
                     <table id="deferTable">
@@ -243,7 +212,6 @@
                     </table>
                 </div>
             </div>
-
             <div id="errorTab" class="tab-content">
                 <div class="table-scroll-container">
                     <table id="errorTable">
@@ -254,11 +222,11 @@
             </div>
         </div>
     </div>
-    
-    <div id="welcomeScreen" style="text-align: center; padding: 60px 20px; color: var(--text-muted);">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary); margin-bottom: 20px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-        <h3 style="font-size: 24px; margin-bottom: 10px; color: var(--text-main);">Upload an Exchange Log to Begin</h3>
-        <p style="max-width: 400px; margin: 0 auto; line-height: 1.6;">Use the "Upload Log CSV" button in the top right to select your raw log file.</p>
+
+    <div id="welcomeScreen" style="text-align:center;padding:60px 20px;color:var(--text-muted);">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:#8C5A35;margin-bottom:20px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <h3 style="font-size:24px;margin-bottom:10px;color:var(--text-main);">Upload an Exchange Log to Begin</h3>
+        <p style="max-width:400px;margin:0 auto;line-height:1.6;">Use the "Upload Log CSV" button in the top right to select your raw log file.</p>
     </div>
 
 </div>
@@ -266,25 +234,31 @@
 <script>
 let myChart = null;
 let currentFilename = "";
+// Store raw stats and maps globally so PDF can access them
+let gStats = null;
+let gDeferMap = {};
+let gErrorMap = {};
+let gEarliest = null;
+let gLatest = null;
 
 window.onload = function() { loadHistoryTable(); };
 
-// Safe HTML escaping
+function txt(str) {
+    return (str || "").toString().trim();
+}
 function escapeHTML(str) {
-    return (str || "").toString().replace(/</g, "&lt;").replace(/>/g, "&gt;").trim();
+    return (str || "").toString()
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").trim();
 }
 
 function switchLeftTab(tabId, element) {
-    document.getElementById('chartTab').classList.remove('active');
-    document.getElementById('historyTab').classList.remove('active');
+    ['chartTab','historyTab'].forEach(id => document.getElementById(id).classList.remove('active'));
     element.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
     element.classList.add('active');
 }
-
 function switchRightTab(tabId, element) {
-    document.getElementById('deferTab').classList.remove('active');
-    document.getElementById('errorTab').classList.remove('active');
+    ['deferTab','errorTab'].forEach(id => document.getElementById(id).classList.remove('active'));
     element.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
     element.classList.add('active');
@@ -294,13 +268,10 @@ function processCSV() {
     const fileInput = document.getElementById('csvFileInput');
     if (!fileInput.files.length) return;
     currentFilename = fileInput.files[0].name;
-
     Papa.parse(fileInput.files[0], {
         header: true, skipEmptyLines: true,
         complete: function(results) {
             analyzeData(results.data);
-            
-            // Switch UI state
             document.getElementById('welcomeScreen').style.display = 'none';
             document.getElementById('kpiSection').style.display = 'grid';
             document.getElementById('panelsSection').style.display = 'grid';
@@ -317,72 +288,78 @@ function analyzeData(data) {
     data.forEach(row => {
         const actionStr = (row.action || row.Action || row.status || row.Status || "").toUpperCase();
         const dateStr = row.date || row.Date || row['date-time'] || row.datetime;
-        
-        let rawFrom = row.from || row.From || row.sender || row.Sender || "Unknown";
-        let rawTo = row.to || row.To || row.recipient || row.Recipient || "Unknown";
-        
-        const fromEmail = escapeHTML(rawFrom);
-        const toEmail = escapeHTML(rawTo);
+        const rawFrom = row.from || row.From || row.sender || row.Sender || "Unknown";
+        const rawTo   = row.to   || row.To   || row.recipient || row.Recipient || "Unknown";
+        const fromEmail = txt(rawFrom);
+        const toEmail   = txt(rawTo);
 
-        if (!dateStr || !actionStr) return; 
-        
+        if (!dateStr || !actionStr) return;
+
         const rowDate = new Date(dateStr);
         if (!isNaN(rowDate)) {
             if (!earliestDate || rowDate < earliestDate) earliestDate = rowDate;
-            if (!latestDate || rowDate > latestDate) latestDate = rowDate;
+            if (!latestDate   || rowDate > latestDate)   latestDate   = rowDate;
         }
 
         stats.total++;
-
-        if (actionStr.includes('DEFER')) stats.defer++;
-        else if (actionStr.includes('DELIVER') || actionStr.includes('OK')) stats.delivered++;
+        if      (actionStr.includes('DEFER'))                                                 stats.defer++;
+        else if (actionStr.includes('DELIVER') || actionStr.includes('OK'))                   stats.delivered++;
         else if (actionStr.includes('ERROR') || actionStr.includes('FAIL') || actionStr.includes('REJECT')) stats.error++;
-        else if (actionStr.includes('QUEUE')) stats.queue++;
+        else if (actionStr.includes('QUEUE'))                                                 stats.queue++;
 
-        const key = `${fromEmail}|${toEmail}`;
-        if (actionStr.includes('DEFER')) deferMap[key] = (deferMap[key] || 0) + 1;
-        if (actionStr.includes('ERROR') || actionStr.includes('FAIL') || actionStr.includes('REJECT')) errorMap[key] = (errorMap[key] || 0) + 1;
+        const key = fromEmail + '|||' + toEmail;
+        if (actionStr.includes('DEFER'))
+            deferMap[key] = (deferMap[key] || 0) + 1;
+        if (actionStr.includes('ERROR') || actionStr.includes('FAIL') || actionStr.includes('REJECT'))
+            errorMap[key] = (errorMap[key] || 0) + 1;
     });
+
+    gStats    = stats;
+    gDeferMap = deferMap;
+    gErrorMap = errorMap;
+    gEarliest = earliestDate;
+    gLatest   = latestDate;
 
     saveToHistory(stats);
     updateDashboard(earliestDate, latestDate, stats, deferMap, errorMap);
 }
 
+function calcPct(val, total) {
+    return total > 0 ? ((val / total) * 100).toFixed(1) + '%' : '0%';
+}
+
 function updateDashboard(earliest, latest, stats, deferMap, errorMap) {
     document.getElementById('kpiTotal').innerText = stats.total.toLocaleString();
-    
+
     let dateText = "No valid dates found";
     if (earliest && latest) {
-        const formatOpts = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-        dateText = `${earliest.toLocaleDateString(undefined, formatOpts)} to ${latest.toLocaleDateString(undefined, formatOpts)}`;
+        const fmt = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        dateText = earliest.toLocaleDateString(undefined, fmt) + ' to ' + latest.toLocaleDateString(undefined, fmt);
     }
     document.getElementById('kpiDates').innerText = dateText;
 
-    const calcPct = (val) => stats.total > 0 ? ((val / stats.total) * 100).toFixed(1) + '%' : '0%';
-    
     document.getElementById('kpiDelivered').innerText = stats.delivered.toLocaleString();
-    document.getElementById('pctDelivered').innerText = calcPct(stats.delivered);
-    
-    document.getElementById('kpiDefer').innerText = stats.defer.toLocaleString();
-    document.getElementById('pctDefer').innerText = calcPct(stats.defer);
-    
-    document.getElementById('kpiError').innerText = stats.error.toLocaleString();
-    document.getElementById('pctError').innerText = calcPct(stats.error);
-    
-    document.getElementById('kpiQueue').innerText = stats.queue.toLocaleString();
-    document.getElementById('pctQueue').innerText = calcPct(stats.queue);
+    document.getElementById('pctDelivered').innerText = calcPct(stats.delivered, stats.total);
+    document.getElementById('kpiDefer').innerText     = stats.defer.toLocaleString();
+    document.getElementById('pctDefer').innerText     = calcPct(stats.defer, stats.total);
+    document.getElementById('kpiError').innerText     = stats.error.toLocaleString();
+    document.getElementById('pctError').innerText     = calcPct(stats.error, stats.total);
+    document.getElementById('kpiQueue').innerText     = stats.queue.toLocaleString();
+    document.getElementById('pctQueue').innerText     = calcPct(stats.queue, stats.total);
 
     const tbody = document.querySelector('#summaryTable tbody');
     tbody.innerHTML = '';
-    const rows = [
+    [
         { label: 'Delivered', val: stats.delivered, badge: 'badge-delivered' },
-        { label: 'Deferred', val: stats.defer, badge: 'badge-defer' },
-        { label: 'Error', val: stats.error, badge: 'badge-error' },
-        { label: 'In Queue', val: stats.queue, badge: 'badge-queue' }
-    ];
-
-    rows.forEach(r => {
-        tbody.innerHTML += `<tr><td><span class="badge ${r.badge}">${r.label}</span></td><td>${r.val.toLocaleString()}</td><td><strong>${calcPct(r.val)}</strong></td></tr>`;
+        { label: 'Deferred',  val: stats.defer,     badge: 'badge-defer'     },
+        { label: 'Error',     val: stats.error,     badge: 'badge-error'     },
+        { label: 'In Queue',  val: stats.queue,     badge: 'badge-queue'     }
+    ].forEach(r => {
+        tbody.innerHTML += `<tr>
+            <td><span class="badge ${r.badge}">${r.label}</span></td>
+            <td>${r.val.toLocaleString()}</td>
+            <td><strong>${calcPct(r.val, stats.total)}</strong></td>
+        </tr>`;
     });
 
     renderChart(stats);
@@ -391,25 +368,22 @@ function updateDashboard(earliest, latest, stats, deferMap, errorMap) {
 }
 
 function populateDetailTable(tableId, mapData) {
-    const tbody = document.querySelector(`#${tableId} tbody`);
+    const tbody = document.querySelector('#' + tableId + ' tbody');
     tbody.innerHTML = '';
-    let sortedKeys = Object.keys(mapData).sort((a, b) => mapData[b] - mapData[a]);
+    const sortedKeys = Object.keys(mapData).sort((a, b) => mapData[b] - mapData[a]);
 
     if (sortedKeys.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--text-muted); padding: 30px;">No data found for this status.</td></tr>`;
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:30px;">No data found for this status.</td></tr>';
         return;
     }
-
     sortedKeys.forEach(key => {
-        const [from, to] = key.split('|');
+        const [from, to] = key.split('|||');
         const count = mapData[key];
-        const impactText = `Caused ${count} potential non-delivery to colleagues.`;
-        
         tbody.innerHTML += `<tr>
-            <td class="email-col">${from}</td>
-            <td class="email-col">${to}</td>
-            <td style="text-align:center;"><span style="background: var(--bg-header); color: var(--text-main); padding: 4px 10px; border-radius: 4px; font-weight: 700;">${count}</span></td>
-            <td style="color: var(--text-muted); font-style: italic; font-size: 12px;">${impactText}</td>
+            <td class="email-col">${escapeHTML(from)}</td>
+            <td class="email-col">${escapeHTML(to)}</td>
+            <td style="text-align:center;"><span style="background:var(--bg-header);color:var(--text-main);padding:4px 10px;border-radius:4px;font-weight:700;">${count}</span></td>
+            <td style="color:var(--text-muted);font-style:italic;font-size:12px;">Caused ${count} potential non-delivery to colleagues.</td>
         </tr>`;
     });
 }
@@ -418,164 +392,434 @@ function renderChart(stats) {
     const ctx = document.getElementById('statusChart').getContext('2d');
     if (myChart) myChart.destroy();
     myChart = new Chart(ctx, {
-        type: 'doughnut',
+        type: 'bar',
         data: {
-            labels: ['Delivered', 'Deferred', 'Error', 'Queue'],
-            datasets: [{ 
-                data: [stats.delivered, stats.defer, stats.error, stats.queue], 
-                backgroundColor: ['#5D8A46', '#D18A30', '#B84A4A', '#8A7E75'], 
-                borderWidth: 0,
-                hoverOffset: 4
+            labels: ['Delivered', 'Deferred', 'Error', 'In Queue'],
+            datasets: [{
+                data: [stats.delivered, stats.defer, stats.error, stats.queue],
+                backgroundColor: ['#5D8A46', '#D18A30', '#B84A4A', '#8A7E75'],
+                borderRadius: 6,
+                borderSkipped: false,
+                barThickness: 22
             }]
         },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
-            cutout: '70%',
-            plugins: { 
-                legend: { 
-                    position: 'bottom',
-                    labels: { color: '#3E2A1D', boxWidth: 10, usePointStyle: true, font: {size: 11, weight: 'bold'} } 
-                } 
-            } 
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: { label: ctx => ' ' + ctx.parsed.x.toLocaleString() + ' messages' },
+                    backgroundColor: '#3E2A1D',
+                    padding: 10,
+                    cornerRadius: 6,
+                    titleFont: { size: 12, weight: 'bold' },
+                    bodyFont: { size: 12 }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: '#EBE4DF', drawBorder: false },
+                    ticks: {
+                        color: '#6B5A4E', font: { size: 11 },
+                        callback: val => val >= 1000 ? (val/1000).toFixed(1)+'k' : val
+                    },
+                    border: { display: false }
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: { color: '#3E2A1D', font: { size: 12, weight: 'bold' } },
+                    border: { display: false }
+                }
+            },
+            animation: { duration: 600, easing: 'easeOutQuart' }
         }
     });
 }
 
-// --- HISTORY FUNCTIONS ---
+// ─── HISTORY ──────────────────────────────────────────────────────────────────
 function saveToHistory(stats) {
     let history = JSON.parse(localStorage.getItem('emailAnalyticsHistory')) || [];
-    let d = new Date();
-    let shortDate = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
-    history.push({ runDate: shortDate, filename: currentFilename, total: stats.total });
-    if(history.length > 50) history.shift();
+    const d = new Date();
+    history.push({
+        runDate: d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        filename: currentFilename,
+        total: stats.total
+    });
+    if (history.length > 50) history.shift();
     localStorage.setItem('emailAnalyticsHistory', JSON.stringify(history));
     loadHistoryTable();
 }
-
 function loadHistoryTable() {
     let history = JSON.parse(localStorage.getItem('emailAnalyticsHistory')) || [];
     const tbody = document.querySelector('#historyTable tbody');
+    if (history.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;">No history recorded yet.</td></tr>';
+        return;
+    }
     tbody.innerHTML = '';
-    
-    if (history.length === 0) return tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding: 20px;">No history recorded yet.</td></tr>`;
-
     history.slice().reverse().forEach(record => {
-        let shortName = record.filename.length > 15 ? record.filename.substring(0, 15) + '...' : record.filename;
+        const shortName = record.filename.length > 15 ? record.filename.substring(0, 15) + '...' : record.filename;
         tbody.innerHTML += `<tr>
-            <td style="font-size: 11px;">${record.runDate}</td>
-            <td title="${record.filename}" style="font-size: 11px;">${shortName}</td>
+            <td style="font-size:11px;">${record.runDate}</td>
+            <td title="${escapeHTML(record.filename)}" style="font-size:11px;">${escapeHTML(shortName)}</td>
             <td><strong>${record.total.toLocaleString()}</strong></td>
         </tr>`;
     });
 }
-function clearHistory() { 
-    if (confirm("Are you sure you want to clear the run history?")) { localStorage.removeItem('emailAnalyticsHistory'); loadHistoryTable(); } 
+function clearHistory() {
+    if (confirm("Are you sure you want to clear the run history?")) {
+        localStorage.removeItem('emailAnalyticsHistory');
+        loadHistoryTable();
+    }
 }
 
-// --- BULLETPROOF PDF GENERATOR ---
+// ─── PDF GENERATION (jsPDF + autoTable — pure vector, zero overflow) ──────────
 function generatePDF() {
-    const pdfBtn = document.getElementById('downloadPdfBtn');
-    pdfBtn.innerText = "Generating...";
-    pdfBtn.disabled = true;
+    if (!gStats) return;
 
-    // Helper to extract raw text and build a clean, inline-styled HTML string. 
-    const extractHtmlTable = (tableId) => {
-        const sourceTbl = document.getElementById(tableId);
-        if (!sourceTbl) return "";
+    const btn = document.getElementById('downloadPdfBtn');
+    btn.innerText = "Generating...";
+    btn.disabled = true;
 
-        let html = '<table style="width: 100%; max-width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; margin-bottom: 25px;">';
-        
-        // Headers
-        html += '<thead><tr>';
-        sourceTbl.querySelectorAll('th').forEach((th, idx) => {
-            let w = "";
-            if (tableId === 'deferTable' || tableId === 'errorTable') {
-                if (idx === 0) w = "width: 30%;";
-                if (idx === 1) w = "width: 30%;";
-                if (idx === 2) w = "width: 12%; text-align: center;";
-                if (idx === 3) w = "width: 28%;";
-            }
-            html += `<th style="background-color: #E8DCD5; color: #3E2A1D; padding: 6px; border: 1px solid #D1C4BC; text-align: left; font-weight: bold; ${w}">${th.innerText}</th>`;
-        });
-        html += '</tr></thead><tbody>';
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
-        // Rows
-        sourceTbl.querySelectorAll('tbody tr').forEach(tr => {
-            html += '<tr>';
-            tr.querySelectorAll('td').forEach((td, idx) => {
-                let align = (idx === 2 && (tableId === 'deferTable' || tableId === 'errorTable')) ? 'center' : 'left';
-                // innerText strips all spans/badges, grabbing ONLY the text/numbers
-                let text = td.innerText.trim(); 
-                html += `<td style="padding: 6px; border: 1px solid #D1C4BC; color: #3E2A1D; word-wrap: break-word; word-break: break-all; overflow-wrap: break-word; text-align: ${align};">${text}</td>`;
+        const PAGE_W  = 210;   // A4 width mm
+        const MARGIN  = 14;    // left & right margin mm
+        const USABLE  = PAGE_W - MARGIN * 2;   // 182 mm
+
+        // ── Colour helpers ──────────────────────────────────────────────────
+        const C_BROWN  = [62,  42, 29];
+        const C_MOCHA  = [107, 90, 78];
+        const C_CHOC   = [140, 90, 53];
+        const C_PANEL  = [232, 220, 213];
+        const C_WHITE  = [255, 255, 255];
+        const C_DEFER  = [209, 138, 48];
+        const C_ERROR  = [184, 74,  74];
+        const C_OK     = [93,  138, 70];
+        const C_QUEUE  = [138, 126, 117];
+        const C_BORDER = [209, 196, 188];
+
+        // ── Helper: section heading ─────────────────────────────────────────
+        function sectionHead(label, y, rgb) {
+            doc.setDrawColor(...C_BORDER);
+            doc.setLineWidth(0.4);
+            doc.line(MARGIN, y + 5, PAGE_W - MARGIN, y + 5);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(13);
+            doc.setTextColor(...rgb);
+            doc.text(label, MARGIN, y);
+            return y + 10;
+        }
+
+        // ── Helper: extract autoTable rows from a DOM table ─────────────────
+        function tableRows(tableId) {
+            const rows = [];
+            document.querySelectorAll('#' + tableId + ' tbody tr').forEach(tr => {
+                const cells = [];
+                tr.querySelectorAll('td').forEach(td => cells.push(td.textContent.trim()));
+                if (cells.length > 0 && cells[0] !== 'No data found for this status.') rows.push(cells);
             });
-            html += '</tr>';
+            return rows;
+        }
+
+        // ── Shared autoTable styles ─────────────────────────────────────────
+        const HEAD_STYLES = {
+            fillColor: C_PANEL, textColor: C_BROWN,
+            fontStyle: 'bold', fontSize: 9,
+            lineColor: C_BORDER, lineWidth: 0.3
+        };
+        const BODY_STYLES = {
+            fontSize: 9, textColor: C_BROWN,
+            lineColor: C_BORDER, lineWidth: 0.2,
+            overflow: 'linebreak', cellPadding: 3
+        };
+        const ALT_ROW = { fillColor: [253, 248, 245] };
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PAGE 1 — Summary
+        // ═══════════════════════════════════════════════════════════════════
+
+        // Title
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(20);
+        doc.setTextColor(...C_CHOC);
+        doc.text('Exchange Outbound Log Report', PAGE_W / 2, 22, { align: 'center' });
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...C_MOCHA);
+        doc.text('File: ' + currentFilename + '   |   Generated: ' + new Date().toLocaleString(), PAGE_W / 2, 29, { align: 'center' });
+
+        // Horizontal rule
+        doc.setDrawColor(...C_BORDER);
+        doc.setLineWidth(0.5);
+        doc.line(MARGIN, 33, PAGE_W - MARGIN, 33);
+
+        // ── Log date range bar ──────────────────────────────────────────────
+        let dateText = 'No valid dates found';
+        if (gEarliest && gLatest) {
+            const fmt = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+            dateText = gEarliest.toLocaleDateString(undefined, fmt) + '  →  ' + gLatest.toLocaleDateString(undefined, fmt);
+        }
+        doc.setFillColor(...C_PANEL);
+        doc.rect(MARGIN, 36, USABLE, 10, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(...C_MOCHA);
+        doc.text('Log period:', MARGIN + 3, 42.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text(dateText, MARGIN + 22, 42.5);
+
+        // ── KPI strip ───────────────────────────────────────────────────────
+        const kpis = [
+            { label: 'Total Treated', val: gStats.total,     pct: null,                              color: C_CHOC  },
+            { label: 'Delivered',     val: gStats.delivered, pct: calcPct(gStats.delivered, gStats.total), color: C_OK    },
+            { label: 'Deferred',      val: gStats.defer,     pct: calcPct(gStats.defer,     gStats.total), color: C_DEFER },
+            { label: 'Error',         val: gStats.error,     pct: calcPct(gStats.error,     gStats.total), color: C_ERROR },
+            { label: 'In Queue',      val: gStats.queue,     pct: calcPct(gStats.queue,     gStats.total), color: C_QUEUE }
+        ];
+        const kpiW  = USABLE / kpis.length;
+        const kpiY  = 50;
+        const kpiH  = 22;
+
+        kpis.forEach((k, i) => {
+            const x = MARGIN + i * kpiW;
+            doc.setFillColor(253, 248, 245);
+            doc.setDrawColor(...C_BORDER);
+            doc.setLineWidth(0.3);
+            doc.rect(x, kpiY, kpiW, kpiH, 'FD');
+
+            // Coloured top bar
+            doc.setFillColor(...k.color);
+            doc.rect(x, kpiY, kpiW, 1.5, 'F');
+
+            // Label
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7);
+            doc.setTextColor(...C_MOCHA);
+            doc.text(k.label.toUpperCase(), x + kpiW / 2, kpiY + 6, { align: 'center' });
+
+            // Value
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(14);
+            doc.setTextColor(...C_BROWN);
+            doc.text(k.val.toLocaleString(), x + kpiW / 2, kpiY + 14, { align: 'center' });
+
+            // Pct
+            if (k.pct) {
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(8);
+                doc.setTextColor(...C_MOCHA);
+                doc.text(k.pct, x + kpiW / 2, kpiY + 19.5, { align: 'center' });
+            }
         });
 
-        html += '</tbody></table>';
-        return html;
-    };
+        // ── Status Distribution table (left) + Chart (right) side by side ──
+        let curY = kpiY + kpiH + 10;
+        curY = sectionHead('Status Distribution', curY, C_BROWN);
 
-    const chartImg = document.getElementById('statusChart').toDataURL("image/png", 1.0);
+        // ── Bar chart data ──────────────────────────────────────────────────
+        const barItems = [
+            { label: 'Delivered', val: gStats.delivered, color: C_OK    },
+            { label: 'Deferred',  val: gStats.defer,     color: C_DEFER  },
+            { label: 'Error',     val: gStats.error,     color: C_ERROR  },
+            { label: 'In Queue',  val: gStats.queue,     color: C_QUEUE  }
+        ];
+        const maxVal = Math.max(...barItems.map(b => b.val), 1);
 
-    // Build the PDF string. A width of 680px perfectly safeguards it against A4 spilling.
-    const pdfHtml = `
-        <div style="width: 680px; max-width: 680px; margin: 0 auto; padding: 10px; font-family: Arial, sans-serif; background-color: #ffffff; color: #333333; box-sizing: border-box;">
-            <div style="text-align: center; margin-bottom: 25px;">
-                <h1 style="color: #8C5A35; margin: 0 0 5px 0; font-size: 22px;">Exchange Outbound Log Report</h1>
-                <p style="color: #6B5A4E; margin: 0; font-size: 12px;">File: ${currentFilename} | Generated: ${new Date().toLocaleString()}</p>
-            </div>
+        // Layout: table left (96mm) | gap (8mm) | bar chart right (78mm)
+        const TABLE_W  = 96;
+        const GAP      = 8;
+        const CHART_X  = MARGIN + TABLE_W + GAP;
+        const CHART_W  = USABLE - TABLE_W - GAP;   // 78mm
 
-            <div style="display: flex; justify-content: space-between; margin-bottom: 25px; font-size: 12px; border: 1px solid #D1C4BC; padding: 12px; background: #FDF8F5; color: #3E2A1D;">
-                <div><strong>Total Treated:</strong> ${document.getElementById('kpiTotal').innerText}</div>
-                <div><strong>Log Dates:</strong> ${document.getElementById('kpiDates').innerText}</div>
-            </div>
+        // Summary table (left column)
+        const statusRows = [
+            ['Delivered', gStats.delivered.toLocaleString(), calcPct(gStats.delivered, gStats.total)],
+            ['Deferred',  gStats.defer.toLocaleString(),     calcPct(gStats.defer,     gStats.total)],
+            ['Error',     gStats.error.toLocaleString(),     calcPct(gStats.error,     gStats.total)],
+            ['In Queue',  gStats.queue.toLocaleString(),     calcPct(gStats.queue,     gStats.total)]
+        ];
 
-            <h2 style="font-size: 16px; color: #3E2A1D; border-bottom: 2px solid #D1C4BC; padding-bottom: 5px; margin-bottom: 15px;">Status Distribution</h2>
-            <div style="text-align: center; margin-bottom: 20px;">
-                <img src="${chartImg}" style="max-height: 180px; width: auto;" />
-            </div>
-            <div>
-                ${extractHtmlTable('summaryTable')}
-            </div>
+        doc.autoTable({
+            startY: curY,
+            margin: { left: MARGIN, right: PAGE_W - MARGIN - TABLE_W },
+            head: [['Status', 'Count', 'Percentage']],
+            body: statusRows,
+            headStyles: HEAD_STYLES,
+            bodyStyles: BODY_STYLES,
+            alternateRowStyles: ALT_ROW,
+            tableWidth: TABLE_W,
+            columnStyles: {
+                0: { cellWidth: TABLE_W * 0.46, fontStyle: 'bold' },
+                1: { cellWidth: TABLE_W * 0.27, halign: 'center' },
+                2: { cellWidth: TABLE_W * 0.27, halign: 'center' }
+            },
+            didParseCell: function(data) {
+                if (data.section === 'body' && data.column.index === 0) {
+                    const label = data.cell.text[0];
+                    if      (label === 'Delivered') data.cell.styles.textColor = C_OK;
+                    else if (label === 'Deferred')  data.cell.styles.textColor = C_DEFER;
+                    else if (label === 'Error')     data.cell.styles.textColor = C_ERROR;
+                    else if (label === 'In Queue')  data.cell.styles.textColor = C_QUEUE;
+                }
+            }
+        });
 
-            <div class="html2pdf__page-break"></div>
+        // ── Native vector bar chart (right column) ──────────────────────────
+        // Inner padding: 4mm all sides
+        const PAD       = 4;
+        const INNER_W   = CHART_W - PAD * 2;  // usable width inside card
+        const BAR_H     = 6;                   // bar thickness mm
+        const LABEL_H   = 4;                   // space for label text above bar
+        const VAL_H     = 4;                   // space for value text below bar
+        const ROW_PITCH = BAR_H + LABEL_H + VAL_H + 3;  // total row height + gap
+        const CHART_H   = PAD + 6 + barItems.length * ROW_PITCH + PAD;  // 6mm for title
 
-            <h2 style="font-size: 16px; color: #D18A30; border-bottom: 2px solid #D18A30; padding-bottom: 5px; margin-bottom: 15px;">DEFER Report</h2>
-            <div>
-                ${extractHtmlTable('deferTable')}
-            </div>
+        // Card background
+        doc.setFillColor(253, 248, 245);
+        doc.setDrawColor(...C_BORDER);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(CHART_X, curY, CHART_W, CHART_H, 2, 2, 'FD');
 
-            <div class="html2pdf__page-break"></div>
+        // Card title
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C_MOCHA);
+        doc.text('MESSAGE DISTRIBUTION', CHART_X + CHART_W / 2, curY + PAD + 2.5, { align: 'center' });
 
-            <h2 style="font-size: 16px; color: #B84A4A; border-bottom: 2px solid #B84A4A; padding-bottom: 5px; margin-bottom: 15px;">ERROR Report</h2>
-            <div>
-                ${extractHtmlTable('errorTable')}
-            </div>
-        </div>
-    `;
+        // Bar start X and full available width for bars (no right-side value overflow)
+        const BAR_X = CHART_X + PAD;
+        const BAR_W = INNER_W;   // bars use full inner width; values go below
 
-    const opt = {
-        margin:       [0.4, 0.4, 0.4, 0.4],
-        filename:     'Exchange_Analytics_Report.pdf',
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, windowWidth: 700 }, 
-        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' },
-        pagebreak:    { mode: ['css', 'legacy'] }
-    };
+        barItems.forEach((item, i) => {
+            const baseY  = curY + PAD + 6 + i * ROW_PITCH;  // top of this row
+            const labelY = baseY + LABEL_H - 0.5;            // baseline for label
+            const barY   = baseY + LABEL_H;                  // top of bar
+            const valY   = barY + BAR_H + 3;                 // baseline for value
+            const barLen = Math.max((item.val / maxVal) * BAR_W, item.val > 0 ? 2 : 0);
+            const pct    = calcPct(item.val, gStats.total);
 
-    html2pdf().set(opt).from(pdfHtml).save().then(() => {
-        pdfBtn.innerText = "📄 Export to PDF";
-        pdfBtn.disabled = false;
-    }).catch(err => {
-        console.error(err);
-        pdfBtn.innerText = "📄 Export to PDF";
-        pdfBtn.disabled = false;
-        alert("An error occurred during PDF generation.");
-    });
+            // Status label (above bar, left-aligned)
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7);
+            doc.setTextColor(...C_BROWN);
+            doc.text(item.label, BAR_X, labelY);
+
+            // Count + pct (above bar, right-aligned) — stays inside card
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(...C_MOCHA);
+            doc.text(item.val.toLocaleString() + '  ' + pct, CHART_X + CHART_W - PAD, labelY, { align: 'right' });
+
+            // Track
+            doc.setFillColor(232, 220, 213);
+            doc.roundedRect(BAR_X, barY, BAR_W, BAR_H, 1.5, 1.5, 'F');
+
+            // Filled bar
+            if (barLen > 0) {
+                doc.setFillColor(...item.color);
+                doc.roundedRect(BAR_X, barY, barLen, BAR_H, 1.5, 1.5, 'F');
+            }
+        });
+
+        curY = Math.max(doc.lastAutoTable.finalY, curY + CHART_H) + 10;
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PAGE 2 — DEFER Report
+        // ═══════════════════════════════════════════════════════════════════
+        doc.addPage();
+
+        curY = 20;
+        curY = sectionHead('DEFER Report', curY, C_DEFER);
+
+        const deferRows = tableRows('deferTable');
+        if (deferRows.length === 0) {
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(9);
+            doc.setTextColor(...C_MOCHA);
+            doc.text('No deferred messages found in this log.', MARGIN, curY + 6);
+            curY += 14;
+        } else {
+            doc.autoTable({
+                startY: curY,
+                margin: { left: MARGIN, right: MARGIN },
+                head: [['From Email', 'To (Recipient)', 'Occ.', 'Impact Analysis']],
+                body: deferRows,
+                headStyles: { ...HEAD_STYLES, fillColor: [255, 243, 224], textColor: C_DEFER },
+                bodyStyles: BODY_STYLES,
+                alternateRowStyles: ALT_ROW,
+                columnStyles: {
+                    0: { cellWidth: USABLE * 0.28, font: 'courier', fontSize: 8 },
+                    1: { cellWidth: USABLE * 0.28, font: 'courier', fontSize: 8 },
+                    2: { cellWidth: USABLE * 0.10, halign: 'center', fontStyle: 'bold' },
+                    3: { cellWidth: USABLE * 0.34, fontStyle: 'italic', fontSize: 8, textColor: C_MOCHA }
+                },
+                showHead: 'everyPage'
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PAGE 3 — ERROR Report
+        // ═══════════════════════════════════════════════════════════════════
+        doc.addPage();
+
+        curY = 20;
+        curY = sectionHead('ERROR Report', curY, C_ERROR);
+
+        const errorRows = tableRows('errorTable');
+        if (errorRows.length === 0) {
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(9);
+            doc.setTextColor(...C_MOCHA);
+            doc.text('No error messages found in this log.', MARGIN, curY + 6);
+        } else {
+            doc.autoTable({
+                startY: curY,
+                margin: { left: MARGIN, right: MARGIN },
+                head: [['From Email', 'To (Recipient)', 'Occ.', 'Impact Analysis']],
+                body: errorRows,
+                headStyles: { ...HEAD_STYLES, fillColor: [253, 235, 235], textColor: C_ERROR },
+                bodyStyles: BODY_STYLES,
+                alternateRowStyles: ALT_ROW,
+                columnStyles: {
+                    0: { cellWidth: USABLE * 0.28, font: 'courier', fontSize: 8 },
+                    1: { cellWidth: USABLE * 0.28, font: 'courier', fontSize: 8 },
+                    2: { cellWidth: USABLE * 0.10, halign: 'center', fontStyle: 'bold' },
+                    3: { cellWidth: USABLE * 0.34, fontStyle: 'italic', fontSize: 8, textColor: C_MOCHA }
+                },
+                showHead: 'everyPage'
+            });
+        }
+
+        // ── Page numbers ────────────────────────────────────────────────────
+        const totalPages = doc.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(...C_MOCHA);
+            doc.text('Page ' + i + ' of ' + totalPages, PAGE_W / 2, 290, { align: 'center' });
+            // Footer rule
+            doc.setDrawColor(...C_BORDER);
+            doc.setLineWidth(0.3);
+            doc.line(MARGIN, 286, PAGE_W - MARGIN, 286);
+        }
+
+        doc.save('Exchange_Analytics_Report.pdf');
+
+    } catch(err) {
+        console.error('PDF error:', err);
+        alert('PDF generation failed: ' + err.message);
+    } finally {
+        btn.innerText = "\uD83D\uDCC4 Export to PDF";
+        btn.disabled = false;
+    }
 }
 </script>
-
 </body>
 </html>
